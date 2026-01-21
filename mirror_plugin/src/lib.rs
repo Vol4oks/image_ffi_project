@@ -31,11 +31,8 @@ pub extern "C" fn process_image(
     }
 
     let data_len = width * height * 4;
-    
-    let data_slice = unsafe { 
-        
-        std::slice::from_raw_parts_mut(rgba_data, data_len) 
-    };
+
+    let data_slice = unsafe { std::slice::from_raw_parts_mut(rgba_data, data_len) };
 
     let params_str = unsafe {
         match CStr::from_ptr(params).to_str() {

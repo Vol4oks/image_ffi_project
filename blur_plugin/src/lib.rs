@@ -38,9 +38,7 @@ pub extern "C" fn process_image(
     let data_len = width * height * 4;
     let data_slice = unsafe { std::slice::from_raw_parts_mut(rgba_data, data_len) };
 
-    let params_str = unsafe {
-        CStr::from_ptr(params).to_str().unwrap_or("{}")
-    };
+    let params_str = unsafe { CStr::from_ptr(params).to_str().unwrap_or("{}") };
 
     let blur_params: BlurParams = match serde_json::from_str(params_str) {
         Ok(p) => p,
