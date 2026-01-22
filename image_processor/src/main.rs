@@ -3,9 +3,8 @@ use std::path::PathBuf;
 use anyhow::Context;
 use clap::{Parser, ValueHint};
 use env_logger::{Builder, Env};
-use image_processor::{load_image_as_rgba, plugin_loader::Plugin, save_rgba_as_png};
 
-// TODO: добавить команду для вывода доступных плагинов по заданному пути
+use image_processor::{load_image_as_rgba, plugin_loader::Plugin, save_rgba_as_png};
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -73,12 +72,33 @@ fn main() -> anyhow::Result<()> {
 
     log::info!("Plugin loaded successfully");
 
-    (interface.process_image)(
+    let code = (interface.process_image)(
         width,
         height,
         rgba_data.as_mut_ptr(),
-        params.as_ptr().cast::<i8>(),
+        std::ffi::CString::new(params)?.as_ptr(),
     );
+
+    match code {
+        plugin_lib::OK_CODE => {
+            log::info!("Processing completed successfully.",);
+        }
+        plugin_lib::PARSE_ERROR_CODE => {
+            anyhow::bail!("Failed to parse parameters");
+        }
+
+        plugin_lib::DATA_IMAGE_ERROR_CODE => {
+            anyhow::bail!("Data image error");
+        }
+
+        plugin_lib::INVALID_PARAMS_CODE => {
+            anyhow::bail!("Invalid parameters");
+        }
+
+        _ => {
+            anyhow::bail!("Processing failed with code: {}.", code);
+        }
+    }
 
     log::info!("Image processed by plugin");
 

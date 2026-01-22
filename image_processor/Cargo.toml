@@ -1,13 +1,14 @@
 [package]
 name = "image_processor"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 
 [dependencies]
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
-env_logger = "0.11"
+env_logger = { workspace = true}
 image = "0.25"
 libloading = "0.9"
 log = { workspace = true}
+plugin_lib = { workspace = true}
 thiserror = "2.0"

@@ -1,23 +1,12 @@
-use log::debug;
 use serde::Deserialize;
-use std::ffi::CStr;
-use std::os::raw::{c_char, c_uchar, c_uint};
+use std::ffi::{CStr, c_char, c_int, c_uchar, c_uint};
+
+use plugin_lib::*;
 
 #[derive(Deserialize, Debug)]
 struct BlurParams {
-    #[serde(default = "default_radius")]
     radius: f32,
-
-    #[serde(default = "default_iterations")]
     iterations: u32,
-}
-
-fn default_radius() -> f32 {
-    1.0
-}
-
-fn default_iterations() -> u32 {
-    1
 }
 
 #[unsafe(no_mangle)]
@@ -27,35 +16,66 @@ pub extern "C" fn process_image(
     height: c_uint,
     rgba_data: *mut c_uchar,
     params: *const c_char,
-) {
-    let width = width as usize;
-    let height = height as usize;
+) -> c_int {
+    let _ = env_logger::try_init();
 
     if rgba_data.is_null() || params.is_null() {
-        return;
+        return NULL_POINT_ERROR_CODE;
     }
 
-    let data_len = width * height * 4;
+    let (width_usize, height_useze) = match check_dimensions(width, height) {
+        Ok((w, h)) => (w, h),
+        Err(code) => return code,
+    };
+
+    let data_len = match calculate_data_len(width_usize, height_useze) {
+        Ok(len) => len,
+        Err(code) => return code,
+    };
+
     let data_slice = unsafe { std::slice::from_raw_parts_mut(rgba_data, data_len) };
 
-    let params_str = unsafe { CStr::from_ptr(params).to_str().unwrap_or("{}") };
+    let params_str = unsafe {
+        match CStr::from_ptr(params).to_str() {
+            Ok(s) => s,
+            Err(e) => {
+                log::debug!("Invalid UTF-8 in parameters: {}", e);
+                return PARSE_ERROR_CODE;
+            }
+        }
+    };
 
     let blur_params: BlurParams = match serde_json::from_str(params_str) {
         Ok(p) => p,
-        Err(_) => BlurParams {
-            radius: default_radius(),
-            iterations: default_iterations(),
-        },
+        Err(e) => {
+            log::debug!("Failed to parse parameters: {}", e);
+            return PARSE_ERROR_CODE;
+        }
     };
 
-    debug!(
+    if blur_params.radius <= 0.0 || blur_params.radius > 1000.0 {
+        log::error!("Invalid radius value: {}", blur_params.radius);
+        return INVALID_PARAMS_CODE;
+    }
+
+    if blur_params.iterations == 0 || blur_params.iterations > 1000 {
+        log::error!("Invalid iterations value: {}", blur_params.radius);
+        return INVALID_PARAMS_CODE;
+    }
+
+    log::debug!(
         "Blur plugin called: {}x{}, radius={}, iterations={}",
-        width, height, blur_params.radius, blur_params.iterations
+        width,
+        height,
+        blur_params.radius,
+        blur_params.iterations
     );
 
     for _ in 0..blur_params.iterations {
-        apply_blur(data_slice, width, height, blur_params.radius);
+        apply_blur(data_slice, width_usize, height_useze, blur_params.radius);
     }
+
+    OK_CODE
 }
 
 fn apply_blur(data: &mut [u8], width: usize, height: usize, radius: f32) {
@@ -104,4 +124,61 @@ fn apply_blur(data: &mut [u8], width: usize, height: usize, radius: f32) {
     }
 
     data.copy_from_slice(&temp);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_bluer_small_image() {
+        let mut data = vec![
+            255, 0, 0, 255, // красный
+            0, 255, 0, 255, // зеленый
+            0, 0, 255, 255, // синий
+            255, 255, 0, 255, // желтый
+            255, 0, 255, 255, // пурпурный
+            0, 255, 255, 255, // голубой
+            128, 128, 128, 255, // серый
+            64, 64, 64, 255, // темно-серый
+            192, 192, 192, 255, // светло-серый
+        ];
+
+        let original_data = data.clone();
+
+        apply_blur(&mut data, 3, 3, 1.0);
+
+        assert_ne!(data, original_data);
+    }
+
+    #[test]
+    fn test_blur_zero_radius() {
+        let mut data = vec![255; 16];
+        let original_data = data.clone();
+
+        apply_blur(&mut data, 2, 2, 0.0);
+        assert_eq!(data, original_data);
+    }
+
+    #[test]
+    fn test_blur_large_dimensions() {
+        let width = 100;
+        let height = 100;
+        let mut data = vec![228; width * height * 4];
+
+        let original_data = data.clone();
+
+        apply_blur(&mut data, width, height, 2.0);
+
+        assert_ne!(data, original_data);
+    }
+
+    #[test]
+    fn test_blur_edge_cases() {
+        let mut data = vec![255, 0, 0, 255];
+        apply_blur(&mut data, 1, 1, 1.0);
+
+        let mut empty_data: Vec<u8> = vec![];
+        apply_blur(&mut empty_data, 0, 0, 1.0);
+    }
 }

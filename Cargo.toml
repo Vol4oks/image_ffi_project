@@ -1,8 +1,10 @@
 [workspace]
 resolver = "3"
-members = ["blur_plugin","image_processor", "mirror_plugin",]
+members = ["blur_plugin","image_processor", "mirror_plugin", "plugin_lib",]
 
 [workspace.dependencies]
 log = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+env_logger = "0.11"
+plugin_lib = {path = "./plugin_lib"}
